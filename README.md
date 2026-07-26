@@ -1,3 +1,13 @@
+---
+title: Hacker Search
+emoji: 🔍
+colorFrom: orange
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Hacker_Search
 
 Semantic search over Hacker News stories. Type a natural-language description of

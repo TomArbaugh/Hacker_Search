@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Hacker News Semantic Search</h2>
+<p class="tagline">Describe an article in your own words — find stories that mean the same thing.</p>
+
+<form method="get" action="/">
+  <input type="text" name="q"
+         placeholder="e.g. privacy risks in consumer gadgets"
+         value="{{ query }}" autofocus>
+  <button type="submit">Search</button>
+</form>
+
+{% if query %}
+  <p class="count">{{ results|length }} result(s) for &ldquo;{{ query }}&rdquo;</p>
+
+  {% for r in results %}
+  <div class="result">
+    <h3>{{ r.number }}. {{ r.title }}</h3>
+    {% if r.snippet %}<p class="snippet">{{ r.snippet }}</p>{% endif %}
+    <div class="meta">
+      {{ r.points }} points &middot; {{ r.num_comments }} comments &middot; by {{ r.author }}
+      &middot; <span class="distance" title="cosine distance — lower means closer in meaning">match {{ '%.3f'|format(r.distance) }}</span>
+    </div>
+    {% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.url }}</a>{% endif %}
+  </div>
+  {% endfor %}
+
+  {% if results|length == 0 %}
+  <p class="notice">No matches. Try describing the topic a different way.</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

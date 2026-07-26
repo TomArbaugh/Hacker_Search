@@ -1,0 +1,12 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+secret.key
+data/_test_users.db
+data/users.db
+*.db
+# keep data/chroma and data/hn_items.jsonl — the index must ship in the image

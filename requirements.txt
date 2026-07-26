@@ -1,8 +1,11 @@
+# --- runtime (needed on the server) ---
 numpy<2
-requests>=2.31
-python-dotenv>=1.0
 sentence-transformers>=2.7
 chromadb>=0.5
-tqdm>=4.66
 flask>=3.0
-flask-login>=0.6
+gunicorn>=21.0
+
+# --- offline pipeline only (ingest.py / build_index.py on your machine) ---
+requests>=2.31
+python-dotenv>=1.0
+tqdm>=4.66
