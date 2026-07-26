@@ -47,13 +47,17 @@ def load_records() -> list[dict]:
 def embed_text(rec: dict) -> str:
     """Build the string we actually embed for a story.
 
-    Title carries most of the signal; story_text (Ask HN / text posts) adds
-    context when present. This is the text the model 'reads' to place the story
-    in vector space — keep it to what a human would skim.
+    Structure is title-dominant by design (see README "Comment enrichment"):
+    the title comes first and is never truncated, then the story body (Ask HN /
+    text posts), then the top-ranked comments. Because the model reads
+    left-to-right and truncates the tail, the title always leads and comments
+    can only enrich — never hijack — the story's meaning.
     """
-    title = rec.get("title", "")
-    text = rec.get("text", "")
-    return f"{title}\n\n{text}".strip() if text else title
+    parts = [rec.get("title", "")]
+    if rec.get("text"):
+        parts.append(rec["text"])
+    parts.extend(rec.get("top_comments") or [])
+    return "\n\n".join(p for p in parts if p).strip()
 
 
 def get_collection(client: chromadb.ClientAPI):
@@ -97,6 +101,9 @@ def build() -> int:
     # Metadata is what the app shows on the results page; the document string is
     # kept so we can build a text snippet without re-reading the JSONL.
     ids = [r["id"] for r in records]
+    # "text" holds ONLY the story's own body — the source for the user-facing
+    # snippet. Comments live in the embedded document (for search) but must never
+    # be displayed, so they are deliberately not stored here.
     metadatas = [
         {
             "title": r.get("title", ""),
@@ -104,6 +111,7 @@ def build() -> int:
             "author": r.get("author", ""),
             "points": r.get("points", 0),
             "num_comments": r.get("num_comments", 0),
+            "text": r.get("text", ""),
         }
         for r in records
     ]

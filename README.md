@@ -73,15 +73,14 @@ Hacker_Search/
 ├── build_index.py        # OFFLINE: JSONL → embeddings → data/chroma/
 │
 ├── search_core.py        # LIVE: embed query → query Chroma → return hits
-├── users.py              # LIVE: SQLite auth (init_db, get_user_by_id, ...)
-├── app.py                # LIVE: Flask routes + UI
+├── app.py                # LIVE: public Flask search route + /healthz
 │
-├── templates/            # Jinja templates (base, search, login, signup)
+├── Dockerfile            # HF Spaces image (bakes in model + index)
+├── templates/            # Jinja templates (base, search)
 │
 └── data/                 # generated artifacts (big ones gitignored)
-    ├── hn_items.jsonl    # raw pulled corpus
-    ├── chroma/           # persisted vector DB  ← the "index"
-    └── users.db          # SQLite user table
+    ├── hn_items.jsonl    # raw pulled corpus (+ top_comments per story)
+    └── chroma/           # persisted vector DB  ← the "index"
 ```
 
 ## Module responsibilities
@@ -94,17 +93,76 @@ Hacker_Search/
   Re-runnable from scratch.
 - **`search_core.py`** — `search(query, k) -> list[Hit]`. Loads model + opens
   Chroma at import time. No Flask imports (stays testable and reusable).
-- **`users.py`** — SQLite auth; passwords hashed with `werkzeug.security`.
-- **`app.py`** — routes only, delegates to `search_core` and `users`.
+- **`app.py`** — a single public search route + `/healthz`, delegates to
+  `search_core`. No accounts.
 
 ## Build order
 
 1. **HN data** — `config.py` + `ingest.py` (get real data on disk).
 2. **Index** — `build_index.py` (build + sanity-check the Chroma DB).
 3. **Search** — `search_core.py` (nail search quality in isolation).
-4. **Web** — `users.py` + `app.py` + templates (wire up the UI last).
+4. **Web** — `app.py` + templates (public, no login).
 
 Each layer is verifiable before the next depends on it.
+
+## Comment enrichment (planned)
+
+Embedding the title alone (~10 words) is thin. We enrich each story's embed text
+with a few of its **highest-ranked HN comments**, so the model understands what a
+story is actually about — while guarding hard against low-quality/off-topic noise.
+
+### Why this is safe from trolling
+- HN already ranks comments by quality; trolls get downvoted and sink. We take
+  only the **top few**, so we select from the pool trolls were filtered out of.
+- We drop anything HN moderation killed (`dead` / `deleted` / flagged).
+- The **title stays dominant** (see embed structure) — comments can only nudge a
+  result's meaning, never hijack it. The real risk isn't trolls, it's an
+  upvoted-but-off-topic joke; the title cap neutralizes it.
+
+### Data source
+Use the **Firebase HN API** (`/v0/item/{id}.json`), not Algolia, for comments.
+A story item's `kids` array is HN's **ranked order** (best comment first), so we
+never need per-comment scores (which HN doesn't expose anyway) — we just take the
+front of `kids`.
+
+### Filter rules (applied in order, per story)
+1. Fetch the story item; read its `kids` (top-level comments, rank-ordered).
+2. Walk `kids` in order, fetching each comment item, until we have
+   `COMMENTS_PER_STORY` keepers. For each candidate, **skip** if:
+   - `type != "comment"`, or `deleted` / `dead` is true (moderation filter)
+   - the text (HTML stripped) has fewer than `COMMENT_MIN_WORDS` words
+     (drops "This.", "+1", low-signal one-liners)
+3. **Top-level only** — do not recurse into replies (lower-ranked, tangential).
+4. Truncate each kept comment to `COMMENT_MAX_CHARS` at a word boundary.
+
+### Embed-text structure (title-dominant)
+```
+<title>
+
+<comment 1>
+<comment 2>
+<comment 3>
+```
+The title is always first and never truncated. Comments follow, capped so their
+combined length can't overwhelm the title. Comments are used **for embedding
+only** — never displayed in the UI (avoids copyright + keeps the results clean).
+The snippet shown to users still comes from the story's own text.
+
+### Config knobs (added to config.py)
+- `COMMENTS_ENABLED` (default true) — master switch, so title-only is one flag away
+- `COMMENTS_PER_STORY` (default 3) — how many top comments to keep
+- `COMMENT_MIN_WORDS` (default 15) — junk/one-liner filter
+- `COMMENT_MAX_CHARS` (default 300) — per-comment truncation
+- `HN_FIREBASE_BASE` — Firebase API base URL
+
+### Cost & caching
+This adds one request per story plus one per kept comment — the slowest part of
+ingest. Comments are stored in `hn_items.jsonl` (a `top_comments` field on each
+record), so `build_index.py` never re-fetches, and re-running the index is fast.
+
+### Validate before committing
+Rebuilding is cheap, so A/B it on the same 5–10 queries: (1) title only,
+(2) title + comments. Keep comments only if they measurably help *your* corpus.
 
 ## Running (offline steps, once)
 

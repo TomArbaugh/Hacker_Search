@@ -41,6 +41,22 @@ INGEST_MIN_POINTS = int(os.getenv("INGEST_MIN_POINTS", "10"))
 # Be polite to the free API: seconds to wait between page requests.
 INGEST_REQUEST_DELAY = float(os.getenv("INGEST_REQUEST_DELAY", "0.5"))
 
+# --- Comment enrichment (Layer 1, optional) ----------------------------------
+# Enrich each story's embed text with its top-ranked HN comments so the model
+# understands what the story is about. See README "Comment enrichment" for why
+# this is safe from trolling. Master switch: turn off for title-only embeddings.
+COMMENTS_ENABLED = os.getenv("COMMENTS_ENABLED", "true").lower() in ("1", "true", "yes")
+# Firebase HN API — a story item's `kids` array is HN's ranked comment order.
+HN_FIREBASE_BASE = os.getenv("HN_FIREBASE_BASE", "https://hacker-news.firebaseio.com/v0")
+# How many top comments to keep per story.
+COMMENTS_PER_STORY = int(os.getenv("COMMENTS_PER_STORY", "3"))
+# Skip comments shorter than this many words (drops "+1", "This.", etc.).
+COMMENT_MIN_WORDS = int(os.getenv("COMMENT_MIN_WORDS", "15"))
+# Truncate each kept comment to this many characters (at a word boundary).
+COMMENT_MAX_CHARS = int(os.getenv("COMMENT_MAX_CHARS", "300"))
+# Cap on how many kids to scan per story, so a huge thread can't stall ingest.
+COMMENT_SCAN_LIMIT = int(os.getenv("COMMENT_SCAN_LIMIT", "30"))
+
 # --- Embeddings (Layer 2/3) --------------------------------------------------
 # Smallest solid sentence-transformer: 384-dim, fast on CPU, low RAM. Swap for
 # "BAAI/bge-small-en-v1.5" later for better quality if the host has headroom.

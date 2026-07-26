@@ -59,17 +59,15 @@ def _get_collection():
 _collection = _get_collection()
 
 
-def _snippet(document: str, title: str) -> str:
-    """Build a short excerpt from a story's embedded document.
+def _snippet(text: str) -> str:
+    """Build a short excerpt from a story's OWN body text.
 
-    The document we indexed is "title\\n\\ntext", so we strip the leading title
-    to avoid repeating it, then truncate. Pure link posts have no body and yield
-    an empty snippet.
+    Deliberately sourced from the story's `text` metadata, never from the
+    embedded document — the document contains comments, which are used for search
+    but must not be displayed. Pure link posts have no body and yield an empty
+    snippet (the UI hides the line in that case).
     """
-    body = document
-    if title and body.startswith(title):
-        body = body[len(title):]
-    body = body.strip()
+    body = (text or "").strip()
     if not body:
         return ""
     if len(body) <= SNIPPET_MAX:
@@ -91,26 +89,24 @@ def search(query: str, k: int = config.TOP_K) -> list[Hit]:
     res = _collection.query(
         query_embeddings=[query_embedding],
         n_results=k,
-        include=["metadatas", "documents", "distances"],
+        include=["metadatas", "distances"],  # not documents — those hold comments
     )
 
     # Chroma returns each field as a list-of-lists (one inner list per query).
     metadatas = res["metadatas"][0]
-    documents = res["documents"][0]
     distances = res["distances"][0]
 
     hits: list[Hit] = []
-    for i, (meta, doc, dist) in enumerate(zip(metadatas, documents, distances), start=1):
-        title = meta.get("title", "")
+    for i, (meta, dist) in enumerate(zip(metadatas, distances), start=1):
         hits.append(
             Hit(
                 number=i,
-                title=title,
+                title=meta.get("title", ""),
                 url=meta.get("url", ""),
                 author=meta.get("author", ""),
                 points=meta.get("points", 0),
                 num_comments=meta.get("num_comments", 0),
-                snippet=_snippet(doc or "", title),
+                snippet=_snippet(meta.get("text", "")),
                 distance=float(dist),
             )
         )

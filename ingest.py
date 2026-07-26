@@ -15,13 +15,18 @@ the created_at_i (unix seconds) cursor. That lets us walk as far back as we like
 """
 from __future__ import annotations  # allow `int | None` annotations on Python 3.9
 
+import html
 import json
+import re
 import time
 
 import requests
 from tqdm import tqdm
 
 import config
+
+# Strip HTML tags from comment bodies (Firebase returns comment text as HTML).
+_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _fetch_page(before_ts: int | None) -> list[dict]:
@@ -67,6 +72,65 @@ def _clean(hit: dict) -> dict | None:
     }
 
 
+def _strip_html(text: str) -> str:
+    """Turn HN's HTML comment text into plain text.
+
+    HN comments arrive as HTML (<p>, <a>, entities like &#x27;). We drop tags and
+    unescape entities so the embedding model reads clean prose.
+    """
+    text = text.replace("<p>", " ").replace("</p>", " ")
+    text = _TAG_RE.sub("", text)
+    return html.unescape(text).strip()
+
+
+def _truncate(text: str, max_chars: int) -> str:
+    """Truncate to max_chars at a word boundary."""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rsplit(" ", 1)[0] + "…"
+
+
+def _fetch_item(item_id: int) -> dict | None:
+    """Fetch one item (story or comment) from the Firebase HN API."""
+    resp = requests.get(f"{config.HN_FIREBASE_BASE}/item/{item_id}.json", timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def fetch_top_comments(story_id: str) -> list[str]:
+    """Return up to COMMENTS_PER_STORY of a story's highest-ranked comments.
+
+    The story item's `kids` list is HN's ranked order (best first), so we walk it
+    from the front and keep the first few comments that pass the quality filters.
+    Top-level only — we never recurse into replies.
+    """
+    try:
+        story = _fetch_item(int(story_id))
+    except (requests.RequestException, ValueError):
+        return []
+    if not story:
+        return []
+
+    kids = story.get("kids") or []
+    kept: list[str] = []
+    for kid_id in kids[: config.COMMENT_SCAN_LIMIT]:
+        if len(kept) >= config.COMMENTS_PER_STORY:
+            break
+        try:
+            c = _fetch_item(kid_id)
+        except requests.RequestException:
+            continue
+        if not c or c.get("type") != "comment":
+            continue
+        if c.get("deleted") or c.get("dead"):  # HN moderation filter
+            continue
+        text = _strip_html(c.get("text") or "")
+        if len(text.split()) < config.COMMENT_MIN_WORDS:  # skip one-liners
+            continue
+        kept.append(_truncate(text, config.COMMENT_MAX_CHARS))
+    return kept
+
+
 def ingest() -> int:
     """Pull up to config.INGEST_TARGET stories and write them to ITEMS_PATH.
 
@@ -107,6 +171,16 @@ def ingest() -> int:
             cursor = oldest_ts
 
             time.sleep(config.INGEST_REQUEST_DELAY)  # be polite to the free API
+
+    # Second phase: enrich each story with its top-ranked comments (optional).
+    # Kept separate from story collection so the request patterns (Algolia vs
+    # Firebase) and their progress bars don't tangle.
+    if config.COMMENTS_ENABLED:
+        for rec in tqdm(records, desc="Fetching top comments", unit="story"):
+            rec["top_comments"] = fetch_top_comments(rec["id"])
+    else:
+        for rec in records:
+            rec["top_comments"] = []
 
     with open(config.ITEMS_PATH, "w", encoding="utf-8") as f:
         for rec in records:
