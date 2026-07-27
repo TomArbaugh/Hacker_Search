@@ -69,6 +69,21 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "hn_stories")
 # Default number of results to return from a query.
 TOP_K = int(os.getenv("TOP_K", "20"))
 
+# --- Hybrid search (Layer 3) -------------------------------------------------
+# Combine dense (vector) + sparse (BM25 keyword) retrieval, fused with RRF, plus
+# a light popularity/recency boost. See README "Hybrid search". Master switch:
+# off = pure semantic (the original behavior).
+HYBRID_ENABLED = os.getenv("HYBRID_ENABLED", "true").lower() in ("1", "true", "yes")
+# How many candidates to pull from each retriever before fusing.
+HYBRID_CANDIDATES = int(os.getenv("HYBRID_CANDIDATES", "50"))
+# Reciprocal Rank Fusion constant (60 is the standard value).
+RRF_K = int(os.getenv("RRF_K", "60"))
+# Tie-breaking boosts (0 disables). These can nudge ranking, not override it.
+POINTS_BOOST = float(os.getenv("POINTS_BOOST", "0.15"))
+RECENCY_BOOST = float(os.getenv("RECENCY_BOOST", "0.05"))
+# Story age (days) at which the recency boost halves.
+RECENCY_HALFLIFE_DAYS = float(os.getenv("RECENCY_HALFLIFE_DAYS", "365"))
+
 # --- Flask / auth (Layer 4) --------------------------------------------------
 SECRET_KEY_FILE = BASE_DIR / "secret.key"
 # Minimum password length enforced at signup.

@@ -19,7 +19,7 @@
     {% if r.snippet %}<p class="snippet">{{ r.snippet }}</p>{% endif %}
     <div class="meta">
       {{ r.points }} points &middot; {{ r.num_comments }} comments &middot; by {{ r.author }}
-      &middot; <span class="distance" title="cosine distance — lower means closer in meaning">match {{ '%.3f'|format(r.distance) }}</span>
+      {% if r.distance is not none %}&middot; <span class="distance" title="cosine distance — lower means closer in meaning">match {{ '%.3f'|format(r.distance) }}</span>{% else %}&middot; <span class="distance" title="matched by keyword search">keyword</span>{% endif %}
     </div>
     {% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.url }}</a>{% endif %}
   </div>

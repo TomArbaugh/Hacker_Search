@@ -164,6 +164,58 @@ record), so `build_index.py` never re-fetches, and re-running the index is fast.
 Rebuilding is cheap, so A/B it on the same 5–10 queries: (1) title only,
 (2) title + comments. Keep comments only if they measurably help *your* corpus.
 
+## Hybrid search
+
+Pure semantic (dense-vector) search is strong on *meaning* (synonyms, paraphrase)
+but weak on *exact tokens* — product names, acronyms, versions, rare jargon. On
+Hacker News people search exact strings (`Zig`, `SQLite`, `Postgres 17`, a company
+name) where the literal match is the point. Keyword search is the mirror image:
+great at exact terms, blind to meaning. Best practice is to **combine them** so
+each covers the other's blind spot.
+
+Our approach (all runs inside `search_core.py`, at query time):
+
+### 1. Two retrievers
+- **Dense** — the existing vector search over Chroma (meaning).
+- **Sparse** — **BM25** keyword search (`rank_bm25`, pure Python, in-memory) over
+  each story's own words (`title + text`, *not* comments — keeps keyword matching
+  precise). Built once at startup from the index.
+
+### 2. Fuse with Reciprocal Rank Fusion (RRF)
+Dense distances and BM25 scores live on totally different scales, so we combine by
+**rank position**, not raw score. Each document's fused score is
+`Σ 1 / (RRF_K + rank)` across the lists it appears in. RRF needs no score
+normalization and no tuning — it's the robust default.
+
+### 3. Light signal boost (HN-specific)
+A small multiplicative nudge using data we already store, so a highly-upvoted or
+fresh exact match edges out an obscure one. It only breaks ties — it can't
+override relevance:
+```
+final = rrf_score × (1 + POINTS_BOOST·popularity + RECENCY_BOOST·recency)
+```
+- `popularity` = `log1p(points)` normalized to the corpus max
+- `recency` = half-life decay on story age (`RECENCY_HALFLIFE_DAYS`)
+
+### Held in reserve: cross-encoder reranking
+The quality ceiling is a cross-encoder that rescores the top ~50 fused candidates
+by reading `(query, document)` jointly. Biggest single quality jump, but it's a
+second model (+~80 MB, +latency on CPU). **Not built yet** — add
+`cross-encoder/ms-marco-MiniLM-L-6-v2` only if hybrid alone isn't enough.
+
+### Config knobs (added to config.py)
+- `HYBRID_ENABLED` (default true) — master switch; off = pure semantic
+- `HYBRID_CANDIDATES` (default 50) — candidates pulled from each retriever
+- `RRF_K` (default 60) — RRF constant (standard value)
+- `POINTS_BOOST` (default 0.15) — popularity weight (0 disables)
+- `RECENCY_BOOST` (default 0.05) — recency weight (0 disables)
+- `RECENCY_HALFLIFE_DAYS` (default 365) — how fast recency decays
+
+### Validate before committing
+A/B on queries with **exact tech names** (where pure semantic should visibly lose)
+plus meaning-based queries. Set `HYBRID_ENABLED=false`, `POINTS_BOOST=0`,
+`RECENCY_BOOST=0` to reproduce pure semantic for comparison.
+
 ## Running (offline steps, once)
 
 ```bash

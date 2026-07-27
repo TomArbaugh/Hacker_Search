@@ -112,6 +112,7 @@ def build() -> int:
             "points": r.get("points", 0),
             "num_comments": r.get("num_comments", 0),
             "text": r.get("text", ""),
+            "created_at_i": r.get("created_at_i", 0),  # for the recency boost
         }
         for r in records
     ]
