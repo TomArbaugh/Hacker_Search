@@ -60,7 +60,7 @@ COMMENT_SCAN_LIMIT = int(os.getenv("COMMENT_SCAN_LIMIT", "30"))
 # --- Embeddings (Layer 2/3) --------------------------------------------------
 # Smallest solid sentence-transformer: 384-dim, fast on CPU, low RAM. Swap for
 # "BAAI/bge-small-en-v1.5" later for better quality if the host has headroom.
-EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 
 # --- Vector store (Layer 2/3) ------------------------------------------------
 CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "hn_stories")
