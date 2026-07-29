@@ -4,7 +4,6 @@ secret.key
 
 # generated data artifacts
 data/hn_items.jsonl
-data/chroma/
 data/users.db
 *.db
 
