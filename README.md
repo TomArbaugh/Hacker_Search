@@ -1,7 +1,7 @@
 ---
 title: Hacker Search
 emoji: 🔍
-colorFrom: orange
+colorFrom: red
 colorTo: gray
 sdk: docker
 app_port: 7860
