@@ -14,8 +14,10 @@ Set HYBRID_ENABLED=false (and the boosts to 0) for pure semantic search.
 """
 from __future__ import annotations
 
+import logging
 import math
 import re
+import sys
 import time
 from dataclasses import dataclass
 
@@ -24,6 +26,14 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
 import config
+
+logger = logging.getLogger(__name__)
+# Ensure output goes to stdout
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 # Longest snippet (characters) we show under a result title.
 SNIPPET_MAX = 200
@@ -107,12 +117,27 @@ def _snippet(text: str) -> str:
 
 def _dense(query: str, n: int) -> tuple[list[str], dict[str, float]]:
     """Vector retrieval: return (ranked ids, {id: cosine distance})."""
+    logger.info(f"[_DENSE] Starting, embedding query")
+    print(f"[_DENSE] Starting, embedding query", flush=True)
+    
     embedding = _model.encode([query], normalize_embeddings=True)[0].tolist()
+    
+    logger.info(f"[_DENSE] Embedding complete, calling _collection.query() with n={n}")
+    print(f"[_DENSE] Embedding complete, calling _collection.query() with n={n}", flush=True)
+    
     res = _collection.query(
         query_embeddings=[embedding], n_results=n, include=["distances"]
     )
+    
+    logger.info(f"[_DENSE] _collection.query() returned, processing results")
+    print(f"[_DENSE] _collection.query() returned, processing results", flush=True)
+    
     ids = res["ids"][0]
     dists = res["distances"][0]
+    
+    logger.info(f"[_DENSE] Complete, returning {len(ids)} results")
+    print(f"[_DENSE] Complete, returning {len(ids)} results", flush=True)
+    
     return ids, dict(zip(ids, dists))
 
 
@@ -122,12 +147,37 @@ def _sparse_ids(query: str, n: int) -> list[str]:
     Documents with zero term overlap are dropped so they don't add rank noise to
     the fusion.
     """
+    logger.info(f"[_SPARSE] Starting BM25 search")
+    print(f"[_SPARSE] Starting BM25 search", flush=True)
+    
     if _bm25 is None:
+        logger.info(f"[_SPARSE] BM25 is None, returning empty list")
         return []
-    scores = _bm25.get_scores(_tokenize(query))
+    
+    logger.info(f"[_SPARSE] Tokenizing query")
+    print(f"[_SPARSE] Tokenizing query", flush=True)
+    tokens = _tokenize(query)
+    logger.info(f"[_SPARSE] Query tokens: {tokens}")
+    
+    logger.info(f"[_SPARSE] Calling _bm25.get_scores()")
+    print(f"[_SPARSE] Calling _bm25.get_scores()", flush=True)
+    scores = _bm25.get_scores(tokens)
+    logger.info(f"[_SPARSE] Got scores array of length {len(scores)}")
+    print(f"[_SPARSE] Got scores array of length {len(scores)}", flush=True)
+    
+    logger.info(f"[_SPARSE] Sorting scores")
+    print(f"[_SPARSE] Sorting scores", flush=True)
     # Indices of the top-n scores, best first, keeping only positive overlap.
     ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
-    return [_ids[i] for i in ranked[:n] if scores[i] > 0]
+    
+    logger.info(f"[_SPARSE] Building result list")
+    print(f"[_SPARSE] Building result list", flush=True)
+    result = [_ids[i] for i in ranked[:n] if scores[i] > 0]
+    
+    logger.info(f"[_SPARSE] Complete, returning {len(result)} results")
+    print(f"[_SPARSE] Complete, returning {len(result)} results", flush=True)
+    
+    return result
 
 
 def _rrf(ranked_lists: list[list[str]], k: int) -> dict[str, float]:
@@ -160,17 +210,42 @@ def search(query: str, k: int = config.TOP_K) -> list[Hit]:
     With HYBRID_ENABLED=false it degrades to dense-only. Returns [] for a blank
     query so callers can pass user input straight through.
     """
+    logger.info(f"[SEARCH] Starting search for query: '{query}'")
+    print(f"[SEARCH] Starting search for query: '{query}'", flush=True)
+    
     query = (query or "").strip()
     if not query:
+        logger.info("[SEARCH] Empty query, returning []")
         return []
 
+    logger.info(f"[SEARCH] Calling _dense() with n={config.HYBRID_CANDIDATES}")
+    print(f"[SEARCH] Calling _dense() with n={config.HYBRID_CANDIDATES}", flush=True)
     dense, dense_dist = _dense(query, config.HYBRID_CANDIDATES)
-    sparse = _sparse_ids(query, config.HYBRID_CANDIDATES) if config.HYBRID_ENABLED else []
+    logger.info(f"[SEARCH] _dense() returned {len(dense)} results")
+    print(f"[SEARCH] _dense() returned {len(dense)} results", flush=True)
+    
+    if config.HYBRID_ENABLED:
+        logger.info(f"[SEARCH] Calling _sparse_ids() with n={config.HYBRID_CANDIDATES}")
+        print(f"[SEARCH] Calling _sparse_ids() with n={config.HYBRID_CANDIDATES}", flush=True)
+        sparse = _sparse_ids(query, config.HYBRID_CANDIDATES)
+        logger.info(f"[SEARCH] _sparse_ids() returned {len(sparse)} results")
+        print(f"[SEARCH] _sparse_ids() returned {len(sparse)} results", flush=True)
+    else:
+        sparse = []
+        logger.info("[SEARCH] Hybrid disabled, skipping sparse search")
 
+    logger.info(f"[SEARCH] Calling _rrf() with dense={len(dense)}, sparse={len(sparse)}")
+    print(f"[SEARCH] Calling _rrf() with dense={len(dense)}, sparse={len(sparse)}", flush=True)
     fused = _rrf([dense, sparse], config.RRF_K)
+    logger.info(f"[SEARCH] _rrf() returned {len(fused)} fused results")
+    print(f"[SEARCH] _rrf() returned {len(fused)} fused results", flush=True)
+    
     if not fused:
+        logger.info("[SEARCH] No fused results, returning []")
         return []
 
+    logger.info("[SEARCH] Starting scoring loop")
+    print("[SEARCH] Starting scoring loop", flush=True)
     now = time.time()
     scored = []
     for doc_id, rrf_score in fused.items():
@@ -178,8 +253,12 @@ def search(query: str, k: int = config.TOP_K) -> list[Hit]:
         final = rrf_score * _boost(meta, now)
         scored.append((final, doc_id, meta))
 
+    logger.info(f"[SEARCH] Scored {len(scored)} results, now sorting")
+    print(f"[SEARCH] Scored {len(scored)} results, now sorting", flush=True)
     scored.sort(key=lambda t: t[0], reverse=True)
 
+    logger.info(f"[SEARCH] Building Hit objects for top {k} results")
+    print(f"[SEARCH] Building Hit objects for top {k} results", flush=True)
     hits: list[Hit] = []
     for i, (_, doc_id, meta) in enumerate(scored[:k], start=1):
         hits.append(
@@ -196,6 +275,9 @@ def search(query: str, k: int = config.TOP_K) -> list[Hit]:
                 distance=dense_dist.get(doc_id),
             )
         )
+    
+    logger.info(f"[SEARCH] Completed! Returning {len(hits)} hits")
+    print(f"[SEARCH] Completed! Returning {len(hits)} hits", flush=True)
     return hits
 
 
