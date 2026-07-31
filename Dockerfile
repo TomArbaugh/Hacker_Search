@@ -30,6 +30,6 @@ RUN python -c "import config; from sentence_transformers import SentenceTransfor
 EXPOSE 7860
 
 # 1 worker keeps RAM low (the model loads once); threads handle light concurrency.
-# Removed --preload to debug HF Spaces routing issues with query parameters.
+# --preload loads the app before forking so we see import errors in startup logs.
 CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--threads", "8", \
-     "--timeout", "120", "app:app"]
+     "--timeout", "120", "--preload", "app:app"]

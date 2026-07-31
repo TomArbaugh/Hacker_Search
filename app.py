@@ -16,10 +16,7 @@ import os
 import sys
 import traceback
 
-from flask import Flask, render_template, request
-
-from search_core import search
-
+# Set up logging FIRST, before any other imports that might fail
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -27,8 +24,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-logger.info("=== APP MODULE LOADING ===")
-print("=== APP MODULE LOADING (print) ===", flush=True)
+print("=== APP.PY STARTING ===", flush=True)
+logger.info("=== APP.PY STARTING ===")
+
+from flask import Flask, render_template, request
+
+print("=== FLASK IMPORTED OK ===", flush=True)
+logger.info("=== FLASK IMPORTED OK ===")
+
+# Import search_core with error handling - this is where it might fail
+search = None
+try:
+    print("=== IMPORTING SEARCH_CORE ===", flush=True)
+    logger.info("=== IMPORTING SEARCH_CORE ===")
+    from search_core import search
+    print("=== SEARCH_CORE IMPORTED OK ===", flush=True)
+    logger.info("=== SEARCH_CORE IMPORTED OK ===")
+except Exception as e:
+    print(f"=== SEARCH_CORE IMPORT FAILED: {e} ===", flush=True)
+    logger.error(f"=== SEARCH_CORE IMPORT FAILED: {e} ===")
+    logger.error(traceback.format_exc())
+    print(traceback.format_exc(), flush=True)
+
+print("=== CREATING FLASK APP ===", flush=True)
+logger.info("=== CREATING FLASK APP ===")
 
 app = Flask(__name__)
 
@@ -52,6 +71,10 @@ def index():
     
     query = request.args.get("q", "").strip()
     logger.info(f"Query extracted: '{query}'")
+    
+    if search is None:
+        logger.error("search_core not loaded - returning empty results")
+        return "<h1>Error</h1><p>Search module failed to load. Check container logs.</p>", 500
     
     try:
         logger.info("Calling search()...")
