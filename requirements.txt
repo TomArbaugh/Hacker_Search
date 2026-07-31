@@ -1,7 +1,7 @@
 # --- runtime (needed on the server) ---
 numpy<2
 sentence-transformers>=2.7
-chromadb>=0.5
+chromadb==0.4.24  # Pinned to older stable version - 1.x has issues on HF Spaces
 rank-bm25>=0.2
 flask>=3.0
 gunicorn>=21.0
