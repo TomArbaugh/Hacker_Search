@@ -11,11 +11,21 @@ Run locally (dev):
 Run in production (Docker / HF Spaces):
     gunicorn --bind 0.0.0.0:7860 app:app
 """
+import logging
 import os
+import sys
+import traceback
 
 from flask import Flask, render_template, request
 
 from search_core import search
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -23,8 +33,23 @@ app = Flask(__name__)
 @app.route("/")
 def index():
     """The search page. Query comes in via ?q= so results are shareable URLs."""
+    logger.info("=== REQUEST RECEIVED ===")
+    logger.info(f"Full URL: {request.url}")
+    logger.info(f"Args: {dict(request.args)}")
+    
     query = request.args.get("q", "").strip()
-    results = search(query)  # returns [] for a blank query
+    logger.info(f"Query extracted: '{query}'")
+    
+    try:
+        logger.info("Calling search()...")
+        results = search(query)
+        logger.info(f"Search returned {len(results)} results")
+    except Exception as e:
+        logger.error(f"Search FAILED with exception: {e}")
+        logger.error(traceback.format_exc())
+        results = []
+    
+    logger.info("Rendering template...")
     return render_template("search.html", query=query, results=results)
 
 
