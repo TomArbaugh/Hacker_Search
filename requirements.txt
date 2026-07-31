@@ -1,7 +1,7 @@
 # --- runtime (needed on the server) ---
 numpy<2
 sentence-transformers>=2.7
-chromadb==1.0.5  # Stable 1.x version compatible with current index
+chromadb==1.5.9  # Match local version used to build index
 rank-bm25>=0.2
 flask>=3.0
 gunicorn>=21.0
