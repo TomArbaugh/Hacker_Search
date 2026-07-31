@@ -27,7 +27,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+logger.info("=== APP MODULE LOADING ===")
+print("=== APP MODULE LOADING (print) ===", flush=True)
+
 app = Flask(__name__)
+
+logger.info("=== FLASK APP CREATED ===")
+print("=== FLASK APP CREATED (print) ===", flush=True)
+
+
+@app.before_request
+def log_request():
+    """Log every incoming request before processing."""
+    print(f"=== BEFORE_REQUEST: {request.method} {request.url} ===", flush=True)
+    logger.info(f"=== BEFORE_REQUEST: {request.method} {request.url} ===")
 
 
 @app.route("/")
@@ -58,6 +71,18 @@ def healthz():
     """Lightweight liveness endpoint for the uptime pinger that keeps the free
     Space warm. Does no model work, so pinging it is cheap."""
     return "ok", 200
+
+
+@app.route("/test")
+def test_route():
+    """Debug route to test if query parameters work at all."""
+    print("=== TEST ROUTE HIT ===", flush=True)
+    logger.info("=== TEST ROUTE HIT ===")
+    q = request.args.get("q", "no-q-param")
+    msg = f"Test route works! q={q}, all args={dict(request.args)}"
+    logger.info(msg)
+    print(msg, flush=True)
+    return f"<h1>Test Route</h1><p>{msg}</p>", 200
 
 
 if __name__ == "__main__":
