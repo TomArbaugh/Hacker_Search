@@ -29,7 +29,7 @@ RUN python -c "import config; from sentence_transformers import SentenceTransfor
 
 EXPOSE 7860
 
-# 1 worker keeps RAM low (the model loads once); threads handle light concurrency.
+# 1 worker, single-threaded to avoid thread-safety issues with Chroma/BM25.
 # --preload loads the app before forking so we see import errors in startup logs.
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--threads", "8", \
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", \
      "--timeout", "120", "--preload", "app:app"]
